@@ -73,6 +73,7 @@ RANGOS = [("capi1", 2, 17), ("capi2", 18, 28), ("capi3", 29, 45), ("capi4", 46, 
           ("capi5", 61, 74), ("capi6", 75, 84), ("capi7", 85, 94), ("capi8", 95, 104),
           ("capi9", 105, 114)]
 ORDEN = [r[0] for r in RANGOS] + ["capi-20.45"]
+ALIASES_PANEL = set(r[0] for r in RANGOS)   # servidores que capi-ops sí vigila
 HOSTS_WAHA = ([f"waha{n}.supercrm.best" for n in
                list(range(2, 29)) + list(range(29, 46)) + list(range(46, 61)) +
                list(range(61, 69)) + list(range(75, 85)) + list(range(85, 95)) +
@@ -401,7 +402,7 @@ def evaluar_eventos(t, salud):
         nuevo["failed"] = prev.get("failed", 0)
         previos[a] = nuevo
 
-    for a in [a for a in previos if a not in vistos]:
+    for a in [a for a in previos if a not in vistos and a in ALIASES_PANEL]:
         if previos[a].get("reachable") is not False:
             previos[a]["reachable"] = False
             anotar_evento(t, "servidor_sin_datos", a, detalle="el servidor desapareció de capi-ops")
