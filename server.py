@@ -34,6 +34,8 @@ WAHA_API_KEY = os.environ.get("WAHA_API_KEY", "").strip()
 OPS_HEALTH = os.environ.get("OPS_HEALTH_URL", "http://207.231.110.162:18080/health").strip()
 OPS_METRICS = os.environ.get("OPS_METRICS_URL", "http://207.231.110.162:18080/metrics").strip()
 PUERTO = int(os.environ.get("PORT", "8080"))
+VERSION = "1.1.0"
+ARRANQUE_ISO = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 PASO = 60                 # segundos entre puntos del histórico
 MAX_PUNTOS = 480          # ~8 h de histórico rodante en memoria (detalle fino)
 BARRIDO_S = 1200          # cada 20 min el inventario de sesiones
@@ -996,6 +998,8 @@ class Handler(BaseHTTPRequestHandler):
             ok = bool(salud) and (edad is None or edad < BARRIDO_S + 600)
             self._json(200, {
                 "ok": ok,
+                "version": VERSION,
+                "arrancado_en": ARRANQUE_ISO,
                 "edad_sesiones_seg": edad,
                 "fuente_capi_ops": bool(salud),
                 "capi_ops_ultimo_ciclo": (salud or {}).get("lastCycleAt"),
