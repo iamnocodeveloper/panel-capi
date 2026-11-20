@@ -18,7 +18,7 @@ a{color:var(--azul);text-decoration:none}
 .wrap{max-width:1800px;margin:0 auto;padding:0 20px 40px}
 
 /* topbar */
-.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 0 12px;border-bottom:1px solid var(--borde);margin-bottom:18px;position:sticky;top:0;background:rgba(17,18,23,.96);backdrop-filter:blur(8px);z-index:20}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 0 12px;border-bottom:1px solid var(--borde);margin-bottom:18px;position:sticky;top:0;background:rgba(17,18,23,.96);backdrop-filter:blur(8px);z-index:20}
 .brand{display:flex;align-items:center;gap:12px;min-width:0}
 .brand h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.2px;white-space:nowrap}
 .brand .sub{font-size:12px;color:var(--txt2);margin-top:1px}
@@ -33,6 +33,8 @@ button:hover{background:#2a3038;border-color:#4b545c}
 button:active{transform:translateY(1px)}
 button.primario{background:#1f3a2b;border-color:#2f5c43;color:#b7e4c7}
 button.primario:hover{background:#26472f}
+select{font:inherit;font-size:12.5px;color:var(--txt);background:var(--panel2);border:1px solid var(--borde2);border-radius:6px;padding:6px 9px;cursor:pointer}
+select:focus{outline:1px solid var(--azul)}
 
 /* kpis */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin-bottom:16px}
@@ -91,6 +93,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--txt2)
 th:hover{color:var(--txt)}
 th .fl{opacity:.4;font-size:9px;margin-left:3px}
 th.act .fl{opacity:1;color:var(--azul)}
+th.izq,td.izq{text-align:left}
 tbody tr:hover{background:#1c2026}
 td.num{font-variant-numeric:tabular-nums}
 tfoot td{font-weight:600;border-top:1px solid var(--borde2);border-bottom:0;background:#15181c}
@@ -99,7 +102,8 @@ tfoot td{font-weight:600;border-top:1px solid var(--borde2);border-bottom:0;back
 
 /* dos columnas */
 .duo{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
-@media(max-width:1100px){.duo{grid-template-columns:1fr}}
+.duo3{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;align-items:start}
+@media(max-width:1100px){.duo,.duo3{grid-template-columns:1fr}}
 
 /* caidas */
 .caida{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #24282d;font-size:12.5px}
@@ -118,6 +122,28 @@ tfoot td{font-weight:600;border-top:1px solid var(--borde2);border-bottom:0;back
 .spin{animation:girar 1s linear infinite;transform-origin:50% 50%}
 @keyframes girar{to{transform:rotate(360deg)}}
 .oculto{display:none!important}
+
+/* barras por hora / día */
+.barras{display:flex;align-items:flex-end;gap:3px;height:160px;padding-top:6px}
+.barras .col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;position:relative}
+.barras .col i{display:block;width:100%;flex:0 0 auto;border-radius:2px 2px 0 0;background:var(--azul);opacity:.85;transition:height .3s}
+.barras .col:hover i{opacity:1}
+.barras .col b{font-size:9.5px;color:var(--txt3);font-weight:400;margin-top:3px;white-space:nowrap;overflow:hidden}
+.barras .col.sel i{box-shadow:0 0 0 1px #fff inset}
+.barras .col .val{position:absolute;top:-2px;font-size:9.5px;color:var(--txt2);opacity:0}
+.barras .col:hover .val{opacity:1}
+.eje{display:flex;justify-content:space-between;font-size:10px;color:var(--txt3);padding-top:2px;border-top:1px solid #24282d}
+.rama{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:800px){.rama{grid-template-columns:1fr}}
+.rama h3{font-size:11.5px;margin:0 0 6px;color:var(--txt2);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+
+/* eventos */
+.ev-tipo{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:10px;border:1px solid var(--borde2);background:#1c2026;color:var(--txt2)}
+.ev-tipo.rojo{color:#f0a9ab;border-color:#5c2b2b;background:#2a1a1b}
+.ev-tipo.ambar{color:#f5d98a;border-color:#5c4a1a;background:#241d10}
+.ev-tipo.verde{color:#a7d8a0;border-color:#2f5c43;background:#1b2b20}
+.ev-tipo.morado{color:#dcc0f0;border-color:#4a3160;background:#231a2b}
+#cuerpoEventos{max-height:420px;overflow:auto}
 @media(max-width:700px){
   .kpi .val{font-size:22px}
   .brand h1{font-size:15px}
@@ -143,6 +169,14 @@ tfoot td{font-weight:600;border-top:1px solid var(--borde2);border-bottom:0;back
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       <span id="horaEc">—</span>
     </div>
+    <select id="selServidor" title="Servidor para las secciones de patrones, picos y tendencia">
+      <option value="">Todos los servidores</option>
+    </select>
+    <div class="tabs" id="tabsRango">
+      <button data-r="24" class="on">24 h</button>
+      <button data-r="168">7 d</button>
+      <button data-r="720">30 d</button>
+    </div>
     <button id="btnRefresh" class="primario" title="Volver a medir ahora">
       <svg id="icoRefresh" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
       Actualizar
@@ -160,7 +194,7 @@ tfoot td{font-weight:600;border-top:1px solid var(--borde2);border-bottom:0;back
         <button data-m="2">Disco</button>
       </div>
       <div class="spacer"></div>
-      <span class="nota" id="notaChart">Porcentaje por servidor · últimas horas</span>
+      <span class="nota" id="notaChart">Porcentaje por servidor</span>
     </div>
     <div class="cuerpo">
       <svg id="chartGrande" width="100%" height="270" preserveAspectRatio="none"></svg>
@@ -170,7 +204,50 @@ tfoot td{font-weight:600;border-top:1px solid var(--borde2);border-bottom:0;back
 
   <div class="grid-srv" id="tarjetas"></div>
 
-  <div class="duo" style="margin-top:16px">
+  <div class="panel" style="margin-top:16px">
+    <div class="cab">
+      <h2><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b877d9" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 15l4-6 3 4 5-8"/></svg> Picos y patrones</h2>
+      <div class="spacer"></div>
+      <span class="nota" id="notaPatrones">—</span>
+    </div>
+    <div class="cuerpo">
+      <div class="rama">
+        <div>
+          <h3>Carga promedio por hora del día (Ecuador)</h3>
+          <div class="barras" id="barrasHora"></div>
+          <div class="eje"><span>00 h</span><span>06 h</span><span>12 h</span><span>18 h</span><span>23 h</span></div>
+        </div>
+        <div>
+          <h3>Carga promedio por día de la semana</h3>
+          <div class="barras" id="barrasDia"></div>
+          <div class="eje" id="ejeDia"></div>
+        </div>
+      </div>
+      <div style="border-top:1px solid #24282d;margin:14px -14px 0;padding:12px 14px 0">
+        <h3 style="font-size:11.5px;margin:0 0 8px;color:var(--txt2);text-transform:uppercase;letter-spacing:.6px;font-weight:600" id="tituloPicos">Picos de la flota</h3>
+        <div class="tabla-wrap">
+          <table id="tablaPicos">
+            <thead><tr><th class="izq">Posición</th><th class="izq">Servidor</th><th class="izq">Métrica</th><th>Valor</th><th class="izq">Momento (hora de Ecuador)</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="cab">
+      <h2><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3fc7c7" stroke-width="2" stroke-linecap="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Tendencia</h2>
+      <div class="spacer"></div>
+      <span class="nota" id="notaTendencia">—</span>
+    </div>
+    <div class="cuerpo">
+      <svg id="chartTendencia" width="100%" height="240" preserveAspectRatio="none"></svg>
+      <div class="leg" id="leyendaTend"></div>
+    </div>
+  </div>
+
+  <div class="duo">
     <div class="panel" style="margin-bottom:0">
       <div class="cab">
         <h2><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#73bf69" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg> Sesiones por servidor</h2>
@@ -210,6 +287,23 @@ tfoot td{font-weight:600;border-top:1px solid var(--borde2);border-bottom:0;back
     </div>
   </div>
 
+  <div class="panel" style="margin-top:16px">
+    <div class="cab">
+      <h2><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ff9830" stroke-width="2" stroke-linecap="round"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg> Eventos y alarmas</h2>
+      <div class="spacer"></div>
+      <span class="nota" id="notaEventos">—</span>
+      <button id="btnMasEventos" style="padding:4px 10px;font-size:12px">Ver todo el registro</button>
+    </div>
+    <div class="cuerpo" style="padding:0">
+      <div class="tabla-wrap" id="cuerpoEventos">
+        <table id="tablaEventos">
+          <thead><tr><th class="izq">Fecha y hora (EC)</th><th class="izq">Servidor</th><th class="izq">Tipo</th><th class="izq">Detalle</th><th>Valor</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="foot" id="pie">Panel de métricas · datos en vivo de capi-ops y de las instancias WAHA</div>
 </div>
 
@@ -217,7 +311,9 @@ tfoot td{font-weight:600;border-top:1px solid var(--borde2);border-bottom:0;back
 "use strict";
 const COLORES = ["#5794f2","#73bf69","#f2cc0c","#e5484d","#b877d9","#3fc7c7","#ff9830","#8ab8ff","#c0d8a8","#d98cb3"];
 const METRICAS = ["CPU","Memoria","Disco"];
+const CLAVES = ["cpu","mem","disco"];
 let DATOS = null, metrica = 1, orden = {k:"alias", asc:true};
+let rangoH = 24, srvSel = "";
 let ocultos = new Set();
 let ultimaCarga = Date.now();
 const $ = id => document.getElementById(id);
@@ -226,6 +322,11 @@ const fmt = (v,d=1) => (v==null || isNaN(v)) ? "—" : Number(v).toFixed(d);
 
 function colorCarga(v){ return v==null ? "#4a5058" : v>85 ? "var(--rojo)" : v>=70 ? "var(--ambar)" : "var(--verde)"; }
 function claseCarga(v){ return v==null ? "" : v>85 ? "rojo" : v>=70 ? "ambar" : ""; }
+function colorDe(alias){
+  if(!DATOS) return COLORES[0];
+  const i = DATOS.servidores.findIndex(s=>s.alias===alias);
+  return COLORES[(i<0?0:i) % COLORES.length];
+}
 function horaEc(epoch){
   if(!epoch) return "—";
   try{
@@ -237,6 +338,18 @@ function horaCorta(epoch){
     return new Intl.DateTimeFormat("es-EC",{timeZone:"America/Guayaquil",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(epoch*1000));
   }catch(e){ return new Date(epoch*1000).toISOString().slice(11,16); }
 }
+function fechaHoraEc(epoch){
+  if(!epoch) return "—";
+  try{
+    return new Intl.DateTimeFormat("es-EC",{timeZone:"America/Guayaquil",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(epoch*1000));
+  }catch(e){ return new Date(epoch*1000).toISOString().slice(5,16).replace("T"," "); }
+}
+function fechaCorta(epoch){
+  try{
+    return new Intl.DateTimeFormat("es-EC",{timeZone:"America/Guayaquil",day:"2-digit",month:"2-digit"}).format(new Date(epoch*1000));
+  }catch(e){ return new Date(epoch*1000).toISOString().slice(5,10); }
+}
+const ETIQUETAS_RANGO = {24:"últimas 24 horas", 168:"últimos 7 días", 720:"últimos 30 días"};
 
 /* ------------------------------- carga */
 async function cargar(forzar){
@@ -247,11 +360,22 @@ async function cargar(forzar){
     if(!r.ok) throw new Error("HTTP "+r.status);
     DATOS = await r.json();
     ultimaCarga = Date.now();
+    pintarSelectores();
     pintar();
   }catch(e){
     $("txtEstado").textContent = "Sin datos: " + e.message;
     $("puntoGlobal").className = "punto malo";
   }
+}
+
+function pintarSelectores(){
+  const sel = $("selServidor");
+  const actual = sel.value;
+  const ops = ['<option value="">Todos los servidores</option>'].concat(
+    DATOS.servidores.map(s=>'<option value="'+esc(s.alias)+'">'+esc(s.alias)+'</option>'));
+  sel.innerHTML = ops.join("");
+  sel.value = actual;
+  srvSel = sel.value;
 }
 
 /* ------------------------------- KPIs */
@@ -267,6 +391,7 @@ function pintarKpis(){
     {lab:"Caídas", val:k.failed, pie:k.failed? "requieren atención" : "ninguna", cls: k.failed?"bad":"ok", ico:'<path d="M18 6 6 18M6 6l12 12"/>'},
     {lab:"Números distintos", val:k.numeros, pie:"líneas identificadas", cls:"", ico:'<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z"/>'},
     {lab:"Incidencias abiertas", val:(k.incidencias==null?"—":k.incidencias), pie:"capi-ops", cls: k.incidencias?"warn":"ok", ico:'<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'},
+    {lab:"Eventos registrados", val:(DATOS.eventos_total==null?"—":DATOS.eventos_total), pie:(DATOS.eventos_total?"en el registro persistente":"sin eventos"), cls:"", ico:'<path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/>'},
     {lab:"Última actualización", val:'<span style="font-size:19px">'+horaEc(DATOS.epoch)+'</span>', pie:"hora de Ecuador (UTC-5)", cls:"", ico:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'}
   ];
   $("kpis").innerHTML = items.map(i =>
@@ -277,12 +402,39 @@ function pintarKpis(){
   $("txtEstado").textContent = ok ? ("En vivo · " + (DATOS.kpis.failed ? DATOS.kpis.failed+" caídas" : "operativo")) : "capi-ops sin respuesta";
 }
 
+/* ------------------------------- series según rango */
+function serieDe(alias){
+  // devuelve [{t, v}] para el alias y el rango/métrica activos
+  const met = CLAVES[metrica];
+  if(rangoH <= 24){
+    const corte = DATOS.epoch - 24*3600;
+    return (DATOS.historico.puntos||[]).filter(p=>p.t>=corte).map(p=>{
+      const arr = (p.s||{})[alias];
+      return {t:p.t, v: arr ? arr[metrica] : null};
+    });
+  }
+  if(rangoH <= 168){
+    const corte = DATOS.epoch - 168*3600;
+    return ((DATOS.serie_horaria||{})[alias]||[]).filter(p=>p.t>=corte).map(p=>({t:p.t, v:p[met]}));
+  }
+  return ((DATOS.tendencia||{})[alias]||[]).map(p=>({
+    t: Math.floor(new Date(p.fecha+"T12:00:00-05:00").getTime()/1000),
+    v: p[met+"_prom"]
+  })).filter(p=>p.v!=null);
+}
+
+function serieFlota(met){
+  // promedio de la flota por punto (solo para el agregado por hora/día)
+  const out = [];
+  const claves = rangoH<=168 ? Object.keys(DATOS.serie_horaria||{}) : [];
+  return out;
+}
+
 /* ------------------------------- gráfico grande */
 function pintarChart(){
   const svg = $("chartGrande");
   const W = svg.clientWidth || 900, H = 270, ml = 42, mr = 14, mt = 12, mb = 26;
   const iw = W - ml - mr, ih = H - mt - mb;
-  const pts = DATOS.historico.puntos || [];
   const srv = DATOS.servidores.filter(s => s.cpu!=null || s.mem!=null);
   let out = '<g>';
   for(let v=0; v<=100; v+=20){
@@ -290,27 +442,35 @@ function pintarChart(){
     out += '<line x1="'+ml+'" y1="'+y+'" x2="'+(W-mr)+'" y2="'+y+'" stroke="#2a2f36" stroke-width="1"/>';
     out += '<text x="'+(ml-7)+'" y="'+(y+4)+'" fill="#6e7681" font-size="10" text-anchor="end">'+v+'%</text>';
   }
-  if(pts.length < 2){
-    out += '<text x="'+(W/2)+'" y="'+(H/2)+'" fill="#6e7681" font-size="12" text-anchor="middle">Reuniendo datos: el histórico necesita al menos dos mediciones</text>';
+  const series = srv.map(s=>({alias:s.alias, pts:serieDe(s.alias)})).filter(x=>x.pts.length);
+  const total = series.reduce((a,x)=>a+x.pts.length,0);
+  if(total < 2){
+    out += '<text x="'+(W/2)+'" y="'+(H/2-8)+'" fill="#6e7681" font-size="12" text-anchor="middle">Recopilando datos</text>'+
+      '<text x="'+(W/2)+'" y="'+(H/2+12)+'" fill="#6e7681" font-size="11" text-anchor="middle">'+
+      (DATOS.cobertura && DATOS.cobertura.horas_cubiertas ? 'hay '+DATOS.cobertura.horas_cubiertas+' hora(s) de histórico agregado' : 'el histórico necesita al menos dos mediciones')+'</text>';
   }else{
-    const t0 = pts[0].t, t1 = pts[pts.length-1].t, span = Math.max(1, t1-t0);
+    let t0 = Infinity, t1 = -Infinity;
+    series.forEach(x=>x.pts.forEach(p=>{ if(p.v!=null){ t0=Math.min(t0,p.t); t1=Math.max(t1,p.t);} }));
+    const span = Math.max(1, t1-t0);
     const X = t => ml + ((t-t0)/span)*iw;
     const Y = v => mt + ih - (Math.max(0,Math.min(100,v))/100)*ih;
-    const marcas = 5;
+    const marcas = 6;
+    const vistos = new Set();
     for(let i=0;i<=marcas;i++){
       const t = t0 + span*i/marcas;
-      out += '<text x="'+X(t)+'" y="'+(H-8)+'" fill="#6e7681" font-size="10" text-anchor="middle">'+horaCorta(t)+'</text>';
+      const txt = rangoH<=24 ? horaCorta(t) : fechaCorta(t);
+      if(vistos.has(txt)) continue;
+      vistos.add(txt);
+      out += '<text x="'+X(t)+'" y="'+(H-8)+'" fill="#6e7681" font-size="10" text-anchor="middle">'+txt+'</text>';
     }
-    srv.forEach((s,idx) => {
+    series.forEach((s) => {
       if(ocultos.has(s.alias)) return;
-      const col = COLORES[idx % COLORES.length];
+      const col = colorDe(s.alias);
       let d = "", abierto = false, ult = null;
-      for(const p of pts){
-        const arr = (p.s||{})[s.alias];
-        const v = arr ? arr[metrica] : null;
-        if(v==null){ abierto=false; continue; }
-        d += (abierto ? "L" : "M") + X(p.t).toFixed(1) + " " + Y(v).toFixed(1) + " ";
-        abierto = true; ult = {x:X(p.t), y:Y(v), v:v};
+      for(const p of s.pts){
+        if(p.v==null){ abierto=false; continue; }
+        d += (abierto ? "L" : "M") + X(p.t).toFixed(1) + " " + Y(p.v).toFixed(1) + " ";
+        abierto = true; ult = {x:X(p.t), y:Y(p.v), v:p.v};
       }
       if(d) out += '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" opacity=".95"/>';
       if(ult) out += '<circle cx="'+ult.x.toFixed(1)+'" cy="'+ult.y.toFixed(1)+'" r="3" fill="'+col+'"/>';
@@ -319,27 +479,28 @@ function pintarChart(){
   out += '</g>';
   svg.setAttribute("viewBox","0 0 "+W+" "+H);
   svg.innerHTML = out;
-  // leyenda
-  $("leyenda").innerHTML = srv.map((s,idx)=>{
-    const col = COLORES[idx % COLORES.length];
-    const arr = DATOS.historico.puntos.length ? (DATOS.historico.puntos[DATOS.historico.puntos.length-1].s||{})[s.alias] : null;
-    const v = arr ? arr[metrica] : null;
-    return '<span class="it'+(ocultos.has(s.alias)?" off":"")+'" data-a="'+esc(s.alias)+'"><span class="sw" style="background:'+col+'"></span>'+esc(s.alias)+
-      ' <span style="color:#6e7681">'+fmt(v)+'%</span></span>';
+
+  // leyenda con el último valor
+  $("leyenda").innerHTML = srv.map((s)=>{
+    const pts = serieDe(s.alias);
+    const ult = pts.length ? pts.filter(p=>p.v!=null).slice(-1)[0] : null;
+    return '<span class="it'+(ocultos.has(s.alias)?" off":"")+'" data-a="'+esc(s.alias)+'"><span class="sw" style="background:'+colorDe(s.alias)+'"></span>'+esc(s.alias)+
+      ' <span style="color:#6e7681">'+(ult?fmt(ult.v)+"%":"—")+'</span></span>';
   }).join("");
   $("leyenda").querySelectorAll(".it").forEach(el=>{
     el.onclick = ()=>{ const a = el.dataset.a; ocultos.has(a)?ocultos.delete(a):ocultos.add(a); pintarChart(); };
   });
+  $("notaChart").textContent = METRICAS[metrica]+" · "+ETIQUETAS_RANGO[rangoH]+
+    (rangoH<=24 ? " (un punto por minuto)" : rangoH<=168 ? " (promedio por hora)" : " (promedio por día)");
 }
 
 /* ------------------------------- mini sparkline */
 function sparkline(alias, W, H){
   const pts = (DATOS.historico.puntos||[]).slice(-90);
-  const idxs = [0,1];
   const cols = ["#5794f2","#73bf69"];
   if(pts.length<2) return '<span style="color:#6e7681;font-size:10.5px">sin histórico</span>';
   let out = "";
-  idxs.forEach((mi,n)=>{
+  [0,1].forEach((mi,n)=>{
     let d="", ab=false;
     pts.forEach((p,i)=>{
       const arr = (p.s||{})[alias];
@@ -376,6 +537,133 @@ function pintarTarjetas(){
         '<span>'+ses.sesiones+' sesiones · <span style="color:#73bf69">'+ses.working+'</span> / <span style="color:'+(ses.failed?'#e5484d':'#6e7681')+'">'+ses.failed+'</span></span></div>'+
     '</div>';
   }).join("");
+}
+
+/* ------------------------------- patrones */
+function promedioPatron(lista, met, alias){
+  // lista: por_hora (24) o por_semana (7); alias vacío = flota
+  return lista.map(x=>{
+    const obj = (x[met]||{});
+    return obj.promedio==null ? null : obj.promedio;
+  });
+}
+function barras(datos, etiquetas, cont, colorFn){
+  const alto = 128;
+  const el = $(cont);
+  el.innerHTML = datos.map((v,i)=>{
+    const h = v==null?2:Math.max(2, (Math.max(0,Math.min(100,v))/100)*alto);
+    const c = v==null ? "#2a2f36" : colorFn(v);
+    return '<div class="col" title="'+esc(etiquetas[i])+': '+(v==null?"sin datos":fmt(v)+" %")+'">'+
+      '<span class="val">'+(v==null?"":fmt(v,0))+'</span>'+
+      '<i style="height:'+h.toFixed(0)+'px;background:'+c+'"></i>'+
+      '<b>'+(etiquetas[i])+'</b></div>';
+  }).join("");
+}
+function pintarPatrones(){
+  const met = CLAVES[metrica];
+  const datosHora = srvSel
+    ? (DATOS.por_hora_servidor[srvSel]||[]).map(x=>(x[met]||{}).promedio)
+    : (DATOS.por_hora||[]).map(x=>(x[met]||{}).promedio);
+  const datosDia = srvSel
+    ? (DATOS.por_semana_servidor[srvSel]||[]).map(x=>(x[met]||{}).promedio)
+    : (DATOS.por_semana||[]).map(x=>(x[met]||{}).promedio);
+  const etHora = Array.from({length:24},(_,i)=>String(i).padStart(2,"0"));
+  barras(datosHora, etHora, "barrasHora", colorCarga);
+  barras(datosDia, DATOS.dias_semana, "barrasDia", colorCarga);
+  $("ejeDia").innerHTML = '<span>lunes</span><span>domingo</span>';
+  const cob = DATOS.cobertura || {};
+  const horas = cob.horas_cubiertas || 0;
+  const conDatos = datosHora.filter(v=>v!=null).length;
+  if(!conDatos){
+    $("notaPatrones").textContent = "Recopilando datos ("+horas+" hora"+(horas===1?"":"s")+" de histórico agregado) · "+METRICAS[metrica];
+  }else{
+    $("notaPatrones").textContent = METRICAS[metrica]+" · "+conDatos+"/24 franjas con datos · "+
+      horas+" h agregadas (retención "+cob.retencion_horaria_dias+" días)";
+  }
+  // título y tabla de picos
+  const tb = $("tablaPicos").querySelector("tbody");
+  let filas = [];
+  if(srvSel){
+    $("tituloPicos").textContent = "Los 5 picos más altos de "+srvSel;
+    filas = (DATOS.picos.por_servidor[srvSel]||[]);
+  }else{
+    $("tituloPicos").textContent = "Picos globales de la flota";
+    filas = (DATOS.picos.global||[]);
+  }
+  if(!filas.length){
+    tb.innerHTML = '<tr><td colspan="5" class="izq" style="color:#6e7681">Recopilando datos: todavía no hay picos registrados.</td></tr>';
+    return;
+  }
+  tb.innerHTML = filas.map((p,i)=>{
+    const col = p.valor>=92? "#e5484d" : p.valor>=85 ? "#ff9830" : "#9aa0a6";
+    return '<tr><td class="izq" style="color:#6e7681">'+(i+1)+'</td><td class="izq"><b>'+esc(p.alias)+'</b></td>'+
+      '<td class="izq">'+(p.metrica==="mem"?"Memoria":p.metrica==="cpu"?"CPU":"Disco")+'</td>'+
+      '<td class="num" style="color:'+col+'"><b>'+fmt(p.valor)+' %</b></td>'+
+      '<td class="izq mono">'+esc(p.hora_ec||fechaHoraEc(p.t))+'</td></tr>';
+  }).join("");
+}
+
+/* ------------------------------- tendencia */
+function pintarTendencia(){
+  const svg = $("chartTendencia");
+  const W = svg.clientWidth || 900, H = 240, ml = 42, mr = 14, mt = 14, mb = 26;
+  const iw = W - ml - mr, ih = H - mt - mb;
+  const met = CLAVES[metrica];
+  const dias = rangoH<=168 ? 7 : 30;
+  let out = '<g>';
+  for(let v=0; v<=100; v+=20){
+    const y = mt + ih - (v/100)*ih;
+    out += '<line x1="'+ml+'" y1="'+y+'" x2="'+(W-mr)+'" y2="'+y+'" stroke="#2a2f36" stroke-width="1"/>';
+    out += '<text x="'+(ml-7)+'" y="'+(y+4)+'" fill="#6e7681" font-size="10" text-anchor="end">'+v+'%</text>';
+  }
+  const tend = DATOS.tendencia || {};
+  const usar = srvSel ? [srvSel] : Object.keys(tend);
+  const datos = usar.map(a=>{
+    const serie = (tend[a]||[]).slice(-dias);
+    return {alias:a, serie};
+  }).filter(x=>x.serie.length);
+  const n = datos.length ? datos[0].serie.length : 0;
+  if(!n || !datos.some(d=>d.serie.some(p=>p[met+"_prom"]!=null))){
+    out += '<text x="'+(W/2)+'" y="'+(H/2)+'" fill="#6e7681" font-size="12" text-anchor="middle">Recopilando datos ('+
+      ((DATOS.cobertura||{}).horas_cubiertas||0)+' h agregadas): la tendencia se completa con el paso de los días</text>';
+  }else{
+    const X = i => ml + (n<=1 ? iw/2 : (i/(n-1))*iw);
+    const Y = v => mt + ih - (Math.max(0,Math.min(100,v))/100)*ih;
+    for(let i=0;i<n;i+= Math.max(1, Math.floor(n/6))){
+      out += '<text x="'+X(i)+'" y="'+(H-8)+'" fill="#6e7681" font-size="10" text-anchor="middle">'+
+        esc(datos[0].serie[i].fecha.slice(5))+'</text>';
+    }
+    datos.forEach(d=>{
+      if(ocultos.has(d.alias)) return;
+      const col = colorDe(d.alias);
+      let dp="", dm="", abP=false, abM=false;
+      d.serie.forEach((p,i)=>{
+        const vp = p[met+"_prom"], vm = p[met+"_max"];
+        if(vp==null){ abP=false; } else { dp += (abP?"L":"M")+X(i).toFixed(1)+" "+Y(vp).toFixed(1)+" "; abP=true; }
+        if(vm==null){ abM=false; } else { dm += (abM?"L":"M")+X(i).toFixed(1)+" "+Y(vm).toFixed(1)+" "; abM=true; }
+      });
+      if(dp) out += '<path d="'+dp+'" fill="none" stroke="'+col+'" stroke-width="1.9" stroke-linejoin="round"/>';
+      if(dm) out += '<path d="'+dm+'" fill="none" stroke="'+col+'" stroke-width="1.2" stroke-dasharray="4 3" opacity=".75"/>';
+    });
+  }
+  out += '</g>';
+  svg.setAttribute("viewBox","0 0 "+W+" "+H);
+  svg.innerHTML = out;
+
+  const leg = [];
+  if(srvSel){
+    leg.push('<span class="it"><span class="sw" style="background:'+colorDe(srvSel)+'"></span>promedio diario</span>');
+    leg.push('<span class="it"><span class="sw" style="background:'+colorDe(srvSel)+';opacity:.6"></span>máximo diario (línea discontinua)</span>');
+  }else{
+    datos.forEach(d=>{ leg.push('<span class="it'+(ocultos.has(d.alias)?" off":"")+'" data-a="'+esc(d.alias)+'"><span class="sw" style="background:'+colorDe(d.alias)+'"></span>'+esc(d.alias)+' (promedio)</span>'); });
+  }
+  $("leyendaTend").innerHTML = leg.join("");
+  $("leyendaTend").querySelectorAll(".it[data-a]").forEach(el=>{
+    el.onclick = ()=>{ const a = el.dataset.a; ocultos.has(a)?ocultos.delete(a):ocultos.add(a); pintarTendencia(); };
+  });
+  const cob = DATOS.cobertura||{};
+  $("notaTendencia").textContent = METRICAS[metrica]+" diaria · últimos "+dias+" días · "+
+    (cob.horas_cubiertas? (cob.horas_cubiertas+" h de histórico agregado") : "sin histórico agregado todavía");
 }
 
 /* ------------------------------- tabla */
@@ -452,21 +740,67 @@ function pintarOps(){
   $("panelOps").innerHTML = h;
 }
 
-/* ------------------------------- pintar todo */
-function pintar(){
-  pintarKpis(); pintarChart(); pintarTarjetas(); pintarTabla(); pintarCaidas(); pintarOps();
-  $("pie").textContent = "Panel de métricas · capi-ops y "+DATOS.kpis.instancias+" instancias WAHA · histórico de "+
-    (DATOS.historico.puntos.length? Math.round((DATOS.epoch-DATOS.historico.puntos[0].t)/60)+" min":"0 min");
+/* ------------------------------- eventos */
+const TIPOS_EVENTO = {
+  servidor_inalcanzable:{t:"Servidor inalcanzable", c:"rojo"},
+  servidor_sin_datos:{t:"Servidor sin datos", c:"ambar"},
+  servidor_recuperado:{t:"Servidor recuperado", c:"verde"},
+  umbral_cpu:{t:"Umbral de CPU", c:"ambar"},
+  umbral_mem:{t:"Umbral de memoria", c:"ambar"},
+  umbral_disco:{t:"Umbral de disco", c:"ambar"},
+  umbral_normalizado:{t:"Umbral normalizado", c:"verde"},
+  incidencias_cambio:{t:"Incidencias abiertas", c:"morado"},
+  sesiones_caidas:{t:"Sesiones caídas", c:"rojo"}
+};
+function filaEvento(e){
+  const t = TIPOS_EVENTO[e.tipo] || {t:e.tipo, c:""};
+  const niv = (e.nivel && e.tipo.indexOf("umbral_")===0) ? ' <span style="color:#6e7681">('+e.nivel+' %)</span>' : "";
+  return '<tr><td class="izq mono">'+esc(fechaHoraEc(e.t))+'</td>'+
+    '<td class="izq">'+esc(e.alias)+'</td>'+
+    '<td class="izq"><span class="ev-tipo '+t.c+'">'+esc(t.t)+'</span>'+niv+'</td>'+
+    '<td class="izq" style="white-space:normal;color:#9aa0a6">'+esc(e.detalle||"")+'</td>'+
+    '<td class="num">'+(e.valor==null?"—":fmt(e.valor))+'</td></tr>';
+}
+function pintarEventos(lista, total){
+  const evs = lista || DATOS.eventos || [];
+  const tb = $("tablaEventos").querySelector("tbody");
+  if(!evs.length){
+    tb.innerHTML = '<tr><td colspan="5" class="izq" style="color:#6e7681">Sin eventos registrados. El registro se llena con servidores inalcanzables, umbrales superados (85 % y 92 %), cambios de incidencias y saltos de sesiones caídas.</td></tr>';
+  }else{
+    tb.innerHTML = evs.map(filaEvento).join("");
+  }
+  const tot = total==null ? DATOS.eventos_total : total;
+  $("notaEventos").textContent = (tot==null?0:tot)+" eventos en el registro · se muestran los "+evs.length+" más recientes";
 }
 
-/* ------------------------------- eventos */
+/* ------------------------------- pintar todo */
+function pintar(){
+  pintarKpis(); pintarChart(); pintarTarjetas(); pintarPatrones(); pintarTendencia();
+  pintarTabla(); pintarCaidas(); pintarOps(); pintarEventos();
+  $("pie").textContent = "Panel de métricas · capi-ops y "+DATOS.kpis.instancias+" instancias WAHA · histórico de "+
+    (DATOS.historico.puntos.length? Math.round((DATOS.epoch-DATOS.historico.puntos[0].t)/60)+" min en detalle fino" : "0 min")+
+    " · "+((DATOS.cobertura||{}).horas_cubiertas||0)+" h agregadas";
+}
+
+/* ------------------------------- eventos de UI */
 $("tabsMetrica").querySelectorAll("button").forEach(b=>{
   b.onclick = ()=>{
     $("tabsMetrica").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
-    b.classList.add("on"); metrica = Number(b.dataset.m); pintarChart();
-    $("notaChart").textContent = METRICAS[metrica]+" por servidor · últimas horas";
+    b.classList.add("on"); metrica = Number(b.dataset.m);
+    pintarChart(); pintarPatrones(); pintarTendencia();
   };
 });
+$("tabsRango").querySelectorAll("button").forEach(b=>{
+  b.onclick = ()=>{
+    $("tabsRango").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); rangoH = Number(b.dataset.r);
+    pintarChart(); pintarTendencia();
+  };
+});
+$("selServidor").onchange = e=>{
+  srvSel = e.target.value;
+  pintarPatrones(); pintarTendencia();
+};
 $("tabla").querySelectorAll("th").forEach(th=>{
   th.onclick = ()=>{
     const k = th.dataset.k;
@@ -474,6 +808,18 @@ $("tabla").querySelectorAll("th").forEach(th=>{
     pintarTabla();
   };
 });
+$("btnMasEventos").onclick = async ()=>{
+  if(!DATOS) return;
+  try{
+    const r = await fetch("/api/eventos?limite=300",{cache:"no-store",credentials:"same-origin"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const d = await r.json();
+    pintarEventos(d.eventos, d.total);
+    $("btnMasEventos").textContent = "Registro completo ("+d.total+")";
+  }catch(e){
+    $("notaEventos").textContent = "No se pudo leer /api/eventos: "+e.message;
+  }
+};
 $("btnRefresh").onclick = async ()=>{
   const ico = $("icoRefresh");
   ico.classList.add("spin"); $("btnRefresh").disabled = true;
@@ -485,7 +831,7 @@ setInterval(()=>{
   $("horaEc").textContent = "hace "+s+" s · "+horaEc(Math.floor(Date.now()/1000));
 }, 1000);
 setInterval(()=>cargar(false), 30000);
-window.addEventListener("resize", ()=>{ if(DATOS) pintarChart(); });
+window.addEventListener("resize", ()=>{ if(DATOS){ pintarChart(); pintarTendencia(); } });
 cargar(false);
 </script>
 </body>

@@ -10,6 +10,12 @@ sesiones de WhatsApp (WAHA) por servidor, sesiones caídas y estado de capi-ops.
   - *(Opcional)* `GET /metrics` de capi-ops (Prometheus).
 - **Histórico rodante** en memoria (un punto cada 60 s, ~8 h) con volcado a disco para
   sobrevivir reinicios.
+- **Histórico largo persistido**: agregados por hora (10 días) y por día (30 días) con
+  promedio, máximo y mínimo por servidor y métrica.
+- **Picos, patrones, tendencias y eventos**: los 5 picos más altos por servidor y los
+  globales de la flota, promedio por hora del día (0-23) y por día de la semana, serie
+  diaria de 7 y 30 días, y un log de alarmas (servidor inalcanzable, umbrales de 85 % y
+  92 % de CPU/memoria/disco, cambios de incidencias abiertas y saltos de sesiones caídas).
 - **HTTP Basic obligatorio** (`PANEL_USER` / `PANEL_PASS`): el panel muestra nombres de
   líneas de WhatsApp; sin credenciales no sirve nada.
 
@@ -18,11 +24,21 @@ sesiones de WhatsApp (WAHA) por servidor, sesiones caídas y estado de capi-ops.
 | Ruta | Descripción |
 | --- | --- |
 | `GET /` | Dashboard (`index.html`). |
-| `GET /api/data` | JSON agregado: KPIs, servidores, histórico y sesiones. |
-| `GET /api/health` | `{"ok":…, "edad_sesiones_seg":…, "fuente_capi_ops":…}`. |
+| `GET /api/data` | JSON agregado: KPIs, servidores, histórico corto (`historico`), serie horaria (`serie_horaria`), `picos`, `por_hora`, `por_semana`, `tendencia`, `eventos`, `cobertura` y sesiones. |
+| `GET /api/eventos` | Log de eventos persistido. Parámetros opcionales: `limite` (por defecto 300), `alias`, `tipo`. |
+| `GET /api/health` | `{"ok":…, "edad_sesiones_seg":…, "fuente_capi_ops":…, "cubos_horarios":…, "eventos":…}`. |
 | `GET /api/refresh` | Fuerza una medición ahora (y un barrido de sesiones si el inventario está viejo). |
 
 Todas requieren HTTP Basic.
+
+## Archivos persistidos en `DATA_DIR`
+
+| Archivo | Contenido |
+| --- | --- |
+| `historico.json` | Puntos de 60 s (últimas ~8 h). |
+| `agregados.json` | Cubos horarios (10 días), cubos diarios (30 días), picos y estado de umbrales. |
+| `eventos.json` | Log de eventos y alarmas (hasta 3000 entradas). |
+| `sesiones.json` | Último inventario de sesiones WAHA. |
 
 ## Variables de entorno
 

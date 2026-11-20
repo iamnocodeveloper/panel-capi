@@ -4,12 +4,15 @@
 Servidor HTTP autocontenido (solo stdlib) que:
   - sirve el dashboard (index.html),
   - mide capi-ops (/health) cada 60 s y guarda un histórico rodante en memoria + disco,
+  - agrega ese histórico en cubos horarios (10 días) y diarios (30 días) persistidos,
+  - registra picos por servidor y de la flota, y un log de eventos/alarmas,
   - barre el inventario de sesiones WAHA de la flota cada 20 min en segundo plano,
-  - expone GET /api/data y GET /api/health protegidos con HTTP Basic.
+  - expone GET /api/data, GET /api/eventos y GET /api/health con HTTP Basic.
 
 No escribe ni registra credenciales en ningún log.
 """
 import base64
+import datetime as dt
 import hmac
 import json
 import os
@@ -32,11 +35,22 @@ OPS_HEALTH = os.environ.get("OPS_HEALTH_URL", "http://207.231.110.162:18080/heal
 OPS_METRICS = os.environ.get("OPS_METRICS_URL", "http://207.231.110.162:18080/metrics").strip()
 PUERTO = int(os.environ.get("PORT", "8080"))
 PASO = 60                 # segundos entre puntos del histórico
-MAX_PUNTOS = 480          # ~8 h de histórico rodante
+MAX_PUNTOS = 480          # ~8 h de histórico rodante en memoria (detalle fino)
 BARRIDO_S = 1200          # cada 20 min el inventario de sesiones
 HILOS_WAHA = 20
 TIMEOUT_WAHA = 15
 TIMEOUT_OPS = 12
+
+RET_HORAS = 10            # días de detalle horario
+RET_DIAS = 30             # días de agregados diarios
+MAX_PICOS_SRV = 5         # picos guardados por servidor
+MAX_PICOS_GLOBAL = 8      # picos guardados de la flota
+MAX_EVENTOS = 3000        # eventos persistidos
+UMBRALES = (85.0, 92.0)   # umbrales de CPU/Memoria/Disco
+
+TZ_EC = dt.timezone(dt.timedelta(hours=-5))   # Ecuador, sin horario de verano
+DIAS_SEM = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+METRICAS_SRV = ("cpu", "mem", "disco")
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 try:
@@ -51,6 +65,8 @@ except Exception:
 
 F_HIST = os.path.join(DATA_DIR, "historico.json")
 F_SES = os.path.join(DATA_DIR, "sesiones.json")
+F_AGR = os.path.join(DATA_DIR, "agregados.json")
+F_EVT = os.path.join(DATA_DIR, "eventos.json")
 
 # Rangos declarados de la flota
 RANGOS = [("capi1", 2, 17), ("capi2", 18, 28), ("capi3", 29, 45), ("capi4", 46, 60),
@@ -61,6 +77,7 @@ HOSTS_WAHA = ([f"waha{n}.supercrm.best" for n in
                list(range(2, 29)) + list(range(29, 46)) + list(range(46, 61)) +
                list(range(61, 69)) + list(range(75, 85)) + list(range(85, 95)) +
                list(range(105, 115))]
+
               + ["blackbet.supercrm.best", "wahacapi.supercrm.best"])
 
 CTX = ssl.create_default_context()
@@ -77,6 +94,14 @@ ESTADO = {
         "error": None,
         "hosts": [],        # [{"host","alias","ok","http","sesiones":[...]}]
     },
+    # --- histórico largo (persistido)
+    "agregados": {"horas": {}, "dias": {}},
+    "picos": {"por_servidor": {}, "global": []},
+    "eventos": [],
+    "estado_previo": {},    # alias -> {reachable, cpu_nivel, mem_nivel, disco_nivel, failed}
+    "incidencias_prev": None,
+    "eventos_sucios": False,
+    "agregados_sucios": False,
 }
 
 
@@ -86,6 +111,10 @@ def log(msg):
 
 def ahora_iso(t=None):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t if t is not None else time.time()))
+
+
+def iso_ec(t):
+    return dt.datetime.fromtimestamp(float(t), TZ_EC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # --------------------------------------------------------------------------- utilidades
@@ -118,7 +147,37 @@ def guardar_json_atomico(ruta, datos):
     os.replace(tmp, ruta)
 
 
-# --------------------------------------------------------------------------- histórico
+def _num(v):
+    try:
+        if v is None:
+            return None
+        f = float(v)
+        if f != f:      # NaN
+            return None
+        return f
+    except (TypeError, ValueError):
+        return None
+
+
+def hora_cubo(t):
+    return int(float(t) // 3600 * 3600)
+
+
+def clave_dia(t):
+    return dt.datetime.fromtimestamp(float(t), TZ_EC).strftime("%Y-%m-%d")
+
+
+def nivel_umbral(v):
+    if v is None:
+        return 0
+    if v >= UMBRALES[1]:
+        return 2
+    if v >= UMBRALES[0]:
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------- histórico corto
 def cargar_disco():
     try:
         if os.path.exists(F_HIST):
@@ -140,6 +199,249 @@ def cargar_disco():
         log("no se pudo cargar el inventario: %s" % e)
 
 
+# --------------------------------------------------------------------------- histórico largo
+def cargar_agregados():
+    nuevo = True
+    try:
+        if os.path.exists(F_AGR):
+            d = json.load(open(F_AGR, encoding="utf-8"))
+            with LOCK:
+                ESTADO["agregados"]["horas"] = d.get("horas") or {}
+                ESTADO["agregados"]["dias"] = d.get("dias") or {}
+                ESTADO["picos"]["por_servidor"] = d.get("picos_servidor") or {}
+                ESTADO["picos"]["global"] = d.get("picos_global") or []
+                ESTADO["estado_previo"] = d.get("estado_previo") or {}
+                ESTADO["incidencias_prev"] = d.get("incidencias_prev")
+            nuevo = False
+            n_h = sum(len(v) for v in (d.get("horas") or {}).values())
+            n_d = sum(len(v) for v in (d.get("dias") or {}).values())
+            log("agregados cargados: %d cubos horarios, %d cubos diarios" % (n_h, n_d))
+    except Exception as e:
+        log("no se pudieron cargar los agregados: %s" % e)
+
+    backfill = False
+    if nuevo:
+        backfill = True
+    else:
+        with LOCK:
+            backfill = not ESTADO["agregados"]["horas"]
+    if backfill:
+        # primera ejecución tras la ampliación: sembrar los cubos con el histórico rodante
+        with LOCK:
+            pts = list(ESTADO["puntos"])
+        n = 0
+        for p in pts:
+            acumular(p)
+            n += 1
+        if n:
+            log("cubos sembrados desde el histórico rodante: %d puntos" % n)
+
+    try:
+        if os.path.exists(F_EVT):
+            d = json.load(open(F_EVT, encoding="utf-8"))
+            with LOCK:
+                ESTADO["eventos"] = (d.get("eventos") or [])[-MAX_EVENTOS:]
+            log("eventos cargados: %d" % len(ESTADO["eventos"]))
+    except Exception as e:
+        log("no se pudieron cargar los eventos: %s" % e)
+
+
+def acumular(punto):
+    """Suma un punto a los cubos horario y diario (y actualiza picos)."""
+    t = punto.get("t")
+    if not t:
+        return
+    hk = str(hora_cubo(t))
+    dk = clave_dia(t)
+    with LOCK:
+        horas = ESTADO["agregados"]["horas"]
+        dias = ESTADO["agregados"]["dias"]
+        for alias, arr in (punto.get("s") or {}).items():
+            if not arr:
+                continue
+            h_srv = horas.setdefault(alias, {})
+            d_srv = dias.setdefault(alias, {})
+            for mi, met in enumerate(METRICAS_SRV):
+                v = _num(arr[mi]) if mi < len(arr) else None
+                if v is None:
+                    continue
+                hb = h_srv.setdefault(hk, {}).setdefault(met, {"n": 0, "s": 0.0, "max": v, "min": v})
+                hb["n"] += 1
+                hb["s"] = round(hb["s"] + v, 4)
+                hb["max"] = max(hb["max"], v)
+                hb["min"] = min(hb["min"], v)
+                db = d_srv.setdefault(dk, {}).setdefault(met, {"n": 0, "s": 0.0, "max": v, "min": v})
+                db["n"] += 1
+                db["s"] = round(db["s"] + v, 4)
+                db["max"] = max(db["max"], v)
+                db["min"] = min(db["min"], v)
+                registrar_pico(alias, met, v, t)
+        ESTADO["agregados_sucios"] = True
+
+
+def registrar_pico(alias, met, v, t):
+    """Guarda los máximos por servidor y de la flota, sin repetir el mismo pico cada minuto."""
+    def insertar(lst, tope):
+        for e in lst:
+            if e["metrica"] == met and e["alias"] == alias and abs(e["t"] - t) <= 3600 \
+                    and abs(e["valor"] - v) <= 1.0:
+                if v > e["valor"]:
+                    e["valor"] = round(v, 1)
+                    e["t"] = int(t)
+                return
+        lst.append({"alias": alias, "metrica": met, "valor": round(v, 1), "t": int(t)})
+        lst.sort(key=lambda x: -x["valor"])
+        del lst[tope:]
+
+    insertar(ESTADO["picos"]["por_servidor"].setdefault(alias, []), MAX_PICOS_SRV)
+    insertar(ESTADO["picos"]["global"], MAX_PICOS_GLOBAL)
+
+
+def podar_agregados():
+    """Aplica la retención: horas RET_HORAS días, días RET_DIAS días."""
+    ahora = time.time()
+    corte_h = hora_cubo(ahora - RET_HORAS * 86400)
+    corte_d = clave_dia(ahora - RET_DIAS * 86400)
+    with LOCK:
+        for alias, cubos in ESTADO["agregados"]["horas"].items():
+            for k in [k for k in cubos if int(k) < corte_h]:
+                del cubos[k]
+        for alias, cubos in ESTADO["agregados"]["dias"].items():
+            for k in [k for k in cubos if k < corte_d]:
+                del cubos[k]
+
+
+def persistir_agregados():
+    with LOCK:
+        if not ESTADO["agregados_sucios"]:
+            return
+        ESTADO["agregados_sucios"] = False
+        payload = {
+            "guardadoEn": ahora_iso(),
+            "horas": ESTADO["agregados"]["horas"],
+            "dias": ESTADO["agregados"]["dias"],
+            "picos_servidor": ESTADO["picos"]["por_servidor"],
+            "picos_global": ESTADO["picos"]["global"],
+            "estado_previo": ESTADO["estado_previo"],
+            "incidencias_prev": ESTADO["incidencias_prev"],
+        }
+    try:
+        guardar_json_atomico(F_AGR, payload)
+    except Exception as e:
+        log("no se pudieron guardar los agregados: %s" % e)
+
+
+# --------------------------------------------------------------------------- eventos
+def anotar_evento(t, tipo, alias, valor=None, detalle="", nivel=None, metrica=None):
+    ev = {
+        "t": int(t),
+        "iso": ahora_iso(t),
+        "hora_ec": iso_ec(t),
+        "tipo": tipo,
+        "alias": alias,
+        "metrica": metrica,
+        "nivel": nivel,
+        "valor": None if valor is None else round(float(valor), 1),
+        "detalle": detalle,
+    }
+    with LOCK:
+        lst = ESTADO["eventos"]
+        lst.append(ev)
+        if len(lst) > MAX_EVENTOS:
+            del lst[: len(lst) - MAX_EVENTOS]
+        ESTADO["eventos_sucios"] = True
+    log("evento %s %s %s" % (tipo, alias, detalle))
+    return ev
+
+
+def persistir_eventos():
+    with LOCK:
+        if not ESTADO["eventos_sucios"]:
+            return
+        ESTADO["eventos_sucios"] = False
+        payload = {"guardadoEn": ahora_iso(), "eventos": list(ESTADO["eventos"])}
+    try:
+        guardar_json_atomico(F_EVT, payload)
+    except Exception as e:
+        log("no se pudieron guardar los eventos: %s" % e)
+
+
+NOMBRE_UMBRAL = {"cpu": "umbral_cpu", "mem": "umbral_mem", "disco": "umbral_disco"}
+
+
+def evaluar_eventos(t, salud):
+    """Compara el estado actual con el anterior y anota los cambios en el log de eventos."""
+    previos = ESTADO["estado_previo"]
+    vistos = set()
+    for s in (salud or {}).get("servers") or []:
+        a = s.get("alias")
+        if not a:
+            continue
+        vistos.add(a)
+        prev = previos.get(a) or {}
+        reach = s.get("reachable")
+        if reach is False and prev.get("reachable") is not False:
+            anotar_evento(t, "servidor_inalcanzable", a, detalle="capi-ops no alcanza el servidor")
+        elif reach is True and prev.get("reachable") is False:
+            anotar_evento(t, "servidor_recuperado", a, detalle="el servidor vuelve a responder")
+        nuevo = {"reachable": reach}
+        for met in METRICAS_SRV:
+            v = _num(s.get(met))
+            niv = nivel_umbral(v)
+            viejo = prev.get("%s_nivel" % met, 0)
+            if niv > viejo and v is not None:
+                anotar_evento(t, NOMBRE_UMBRAL[met], a, valor=v, metrica=met,
+                              nivel=int(UMBRALES[niv - 1]),
+                              detalle="%s en %.1f %% (umbral %d %%)" % (met, v, int(UMBRALES[niv - 1])))
+            elif niv < viejo and v is not None:
+                anotar_evento(t, "umbral_normalizado", a, valor=v, metrica=met,
+                              nivel=0, detalle="%s bajó a %.1f %%" % (met, v))
+            nuevo["%s_nivel" % met] = niv
+        # conserva el conteo de caídas que mantiene el barrido WAHA
+        nuevo["failed"] = prev.get("failed", 0)
+        previos[a] = nuevo
+
+    for a in [a for a in previos if a not in vistos]:
+        if previos[a].get("reachable") is not False:
+            previos[a]["reachable"] = False
+            anotar_evento(t, "servidor_sin_datos", a, detalle="el servidor desapareció de capi-ops")
+
+    inc = (salud or {}).get("openIncidents")
+    prev_inc = ESTADO.get("incidencias_prev")
+    if inc is not None and prev_inc != inc:
+        if prev_inc is not None:
+            d = inc - prev_inc
+            anotar_evento(t, "incidencias_cambio", "flota", valor=inc,
+                          detalle="incidencias abiertas %+d (%d)" % (d, inc))
+        ESTADO["incidencias_prev"] = inc
+
+
+def evaluar_eventos_sesiones(t):
+    """Detecta saltos en el número de sesiones caídas por servidor."""
+    with LOCK:
+        hosts = [dict(h) for h in ESTADO["sesiones"]["hosts"]]
+        previos = ESTADO["estado_previo"]
+    fallos = {}
+    for h in hosts:
+        if not h.get("ok"):
+            continue
+        a = h.get("alias")
+        n = sum(1 for s in h.get("sesiones") or [] if s.get("status") == "FAILED")
+        fallos[a] = fallos.get(a, 0) + n
+    for a, cur in fallos.items():
+        p = previos.setdefault(a, {})
+        if "failed" not in p:          # primera observación: solo se toma la línea base
+            p["failed"] = cur
+            continue
+        prev = p["failed"]
+        d = cur - prev
+        if d != 0 and (abs(d) >= 2 or prev == 0 or cur == 0):
+            anotar_evento(t, "sesiones_caidas", a, valor=cur,
+                          detalle="sesiones caídas %+d (ahora %d)" % (d, cur))
+        p["failed"] = cur
+
+
+# --------------------------------------------------------------------------- medición
 def medir():
     """Lee capi-ops y agrega un punto al histórico."""
     t = time.time()
@@ -158,8 +460,9 @@ def medir():
         a = s.get("alias")
         if not a:
             continue
-        punto["s"][a] = [s.get("cpu"), s.get("mem"), s.get("disk")]
+        punto["s"][a] = [_num(s.get("cpu")), _num(s.get("mem")), _num(s.get("disk"))]
 
+    nuevo = False
     with LOCK:
         ESTADO["salud"] = salud
         ESTADO["salud_error"] = None
@@ -169,13 +472,22 @@ def medir():
             pts[-1] = punto
         else:
             pts.append(punto)
+            nuevo = True
         if len(pts) > MAX_PUNTOS:
             del pts[: len(pts) - MAX_PUNTOS]
         copia = list(pts)
+
+    if nuevo:
+        acumular(punto)
+    evaluar_eventos(t, salud)
+
     try:
         guardar_json_atomico(F_HIST, {"guardadoEn": ahora_iso(), "paso": PASO, "puntos": copia})
     except Exception as e:
         log("no se pudo guardar el histórico: %s" % e)
+    podar_agregados()
+    persistir_agregados()
+    persistir_eventos()
     return True
 
 
@@ -237,6 +549,8 @@ def barrer_sesiones(key):
             guardar_json_atomico(F_SES, {"actualizadoEn": int(t0), "hosts": res})
         except Exception as e:
             log("no se pudo guardar el inventario: %s" % e)
+        evaluar_eventos_sesiones(t0)
+        persistir_eventos()
         log("barrido WAHA: %d instancias, %d sesiones, %d caídas, %.0fs"
             % (len(res), total, caidas, time.time() - t0))
     except Exception as e:
@@ -261,6 +575,143 @@ def bucle_sesiones():
         time.sleep(BARRIDO_S)
 
 
+# --------------------------------------------------------------------------- agregados públicos
+def _promedio(cubo):
+    n = cubo.get("n") or 0
+    return (cubo.get("s", 0.0) / n) if n else None
+
+
+def construir_patrones():
+    """Promedios por hora del día (0-23) y por día de la semana, de toda la flota y por servidor."""
+    with LOCK:
+        horas = {a: {k: {m: dict(v) for m, v in cubos.items()} for k, cubos in d.items()}
+                 for a, d in ESTADO["agregados"]["horas"].items()}
+
+    def acum(acc, met, v, n=1, nmax=None, nmin=None):
+        d = acc.setdefault(met, {"s": 0.0, "n": 0, "max": None, "min": None})
+        d["s"] += v * n
+        d["n"] += n
+        if nmax is not None:
+            d["max"] = nmax if d["max"] is None else max(d["max"], nmax)
+        if nmin is not None:
+            d["min"] = nmin if d["min"] is None else min(d["min"], nmin)
+
+    def cerrar(acc):
+        out = {}
+        for m in METRICAS_SRV:
+            d = acc.get(m) or {"s": 0.0, "n": 0, "max": None, "min": None}
+            out[m] = {"promedio": round(d["s"] / d["n"], 1) if d["n"] else None,
+                      "max": None if d["max"] is None else round(d["max"], 1),
+                      "min": None if d["min"] is None else round(d["min"], 1),
+                      "muestras": d["n"]}
+        return out
+
+    flota_h = [{} for _ in range(24)]
+    flota_w = [{} for _ in range(7)]
+    srv_h = {}
+    srv_w = {}
+    for alias, cubos in horas.items():
+        eh = [{} for _ in range(24)]
+        ew = [{} for _ in range(7)]
+        for hk, mets in cubos.items():
+            local = dt.datetime.fromtimestamp(int(hk), TZ_EC)
+            for met in METRICAS_SRV:
+                cubo = mets.get(met)
+                if not cubo or not cubo.get("n"):
+                    continue
+                prom = cubo["s"] / cubo["n"]
+                for destinos, idx in ((eh, local.hour), (ew, local.weekday()),
+                                      (flota_h, local.hour), (flota_w, local.weekday())):
+                    acum(destinos[idx], met, prom, cubo["n"], cubo.get("max"), cubo.get("min"))
+        srv_h[alias] = [cerrar(x) for x in eh]
+        srv_w[alias] = [cerrar(x) for x in ew]
+
+    horas_cubiertas = 0
+    if horas:
+        todas = set()
+        for cubos in horas.values():
+            todas |= set(cubos.keys())
+        horas_cubiertas = len(todas)
+
+    return {
+        "por_hora": [cerrar(x) for x in flota_h],
+        "por_semana": [cerrar(x) for x in flota_w],
+        "dias_semana": list(DIAS_SEM),
+        "por_hora_servidor": srv_h,
+        "por_semana_servidor": srv_w,
+        "horas_cubiertas": horas_cubiertas,
+        "desde": min((k for cubos in horas.values() for k in cubos), default=None),
+        "hasta": max((k for cubos in horas.values() for k in cubos), default=None),
+    }
+
+
+def construir_tendencias():
+    """Serie diaria (promedio y máximo) de los últimos 30 días por servidor."""
+    hoy = dt.datetime.now(TZ_EC).date()
+    with LOCK:
+        dias = {a: {k: {m: dict(v) for m, v in cubos.items()} for k, cubos in d.items()}
+                for a, d in ESTADO["agregados"]["dias"].items()}
+    salida = {}
+    for alias, cubos in dias.items():
+        serie = []
+        for i in range(RET_DIAS - 1, -1, -1):
+            fecha = (hoy - dt.timedelta(days=i)).strftime("%Y-%m-%d")
+            item = {"fecha": fecha}
+            cubo_dia = cubos.get(fecha) or {}
+            for met in METRICAS_SRV:
+                c = cubo_dia.get(met)
+                if c and c.get("n"):
+                    item[met + "_prom"] = round(c["s"] / c["n"], 1)
+                    item[met + "_max"] = round(c["max"], 1)
+                    item[met + "_min"] = round(c["min"], 1)
+                else:
+                    item[met + "_prom"] = None
+                    item[met + "_max"] = None
+                    item[met + "_min"] = None
+            serie.append(item)
+        salida[alias] = serie
+    return salida
+
+
+def construir_serie_horaria():
+    """Serie horaria (promedio y máximo por hora) de los últimos RET_HORAS días, por servidor."""
+    with LOCK:
+        horas = ESTADO["agregados"]["horas"]
+        salida = {}
+        for a, cubos in horas.items():
+            serie = []
+            for hk in sorted(cubos, key=lambda k: int(k)):
+                item = {"t": int(hk)}
+                for met in METRICAS_SRV:
+                    c = cubos[hk].get(met) or {}
+                    n = c.get("n") or 0
+                    item[met] = round(c["s"] / n, 1) if n else None
+                    item[met + "_max"] = round(c["max"], 1) if n else None
+                serie.append(item)
+            salida[a] = serie
+    return salida
+
+
+def construir_picos():
+    with LOCK:
+        por_srv = {a: [dict(x, hora_ec=iso_ec(x["t"]), iso=ahora_iso(x["t"]))
+                       for x in lst] for a, lst in ESTADO["picos"]["por_servidor"].items()}
+        glob = [dict(x, hora_ec=iso_ec(x["t"]), iso=ahora_iso(x["t"])) for x in ESTADO["picos"]["global"]]
+    glob.sort(key=lambda x: -x["valor"])
+    return {"por_servidor": por_srv, "global": glob}
+
+
+def construir_eventos(limite=200, alias=None, tipo=None):
+    with LOCK:
+        lst = list(ESTADO["eventos"])
+    if alias:
+        lst = [e for e in lst if e.get("alias") == alias]
+    if tipo:
+        lst = [e for e in lst if e.get("tipo") == tipo]
+    lst.reverse()
+    return lst[:limite] if limite else lst
+
+
 # --------------------------------------------------------------------------- agregación
 def construir_datos():
     with LOCK:
@@ -274,6 +725,12 @@ def construir_datos():
             "error": ESTADO["sesiones"]["error"],
             "hosts": [dict(h) for h in ESTADO["sesiones"]["hosts"]],
         }
+
+    patrones = construir_patrones()
+    tendencia = construir_tendencias()
+    picos = construir_picos()
+    eventos = construir_eventos(120)
+    total_eventos = len(ESTADO["eventos"])
 
     # --- por servidor (sesiones)
     por_alias = {}
@@ -412,12 +869,31 @@ def construir_datos():
             "caidas": caidas,
         },
         "historico": {"paso": PASO, "puntos": puntos},
+        "serie_horaria": construir_serie_horaria(),
+        # --- ampliación: histórico largo, picos, patrones, eventos, tendencia
+        "picos": picos,
+        "por_hora": patrones["por_hora"],
+        "por_semana": patrones["por_semana"],
+        "dias_semana": patrones["dias_semana"],
+        "por_hora_servidor": patrones["por_hora_servidor"],
+        "por_semana_servidor": patrones["por_semana_servidor"],
+        "cobertura": {
+            "horas_cubiertas": patrones["horas_cubiertas"],
+            "desde": patrones["desde"],
+            "hasta": patrones["hasta"],
+            "retencion_horaria_dias": RET_HORAS,
+            "retencion_diaria_dias": RET_DIAS,
+            "eventos": total_eventos,
+        },
+        "tendencia": tendencia,
+        "eventos": eventos,
+        "eventos_total": total_eventos,
     }
 
 
 # --------------------------------------------------------------------------- HTTP
 class Handler(BaseHTTPRequestHandler):
-    server_version = "panel-capi/1.0"
+    server_version = "panel-capi/1.1"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):  # sin IPs ni credenciales en logs
@@ -482,7 +958,30 @@ class Handler(BaseHTTPRequestHandler):
             self._texto(200, html, "text/html; charset=utf-8")
             return
         if ruta == "/api/data":
-            self._json(200, construir_datos())
+            try:
+                datos = construir_datos()
+            except Exception as e:
+                self._json(500, {"error": "%s: %s" % (type(e).__name__, e)})
+                return
+            self._json(200, datos)
+            return
+        if ruta == "/api/eventos":
+            q = {}
+            if "?" in self.path:
+                for par in self.path.split("?", 1)[1].split("&"):
+                    if "=" in par:
+                        k, v = par.split("=", 1)
+                        q[k] = urllib.request.unquote(v)
+            try:
+                limite = int(q.get("limite", "300"))
+            except ValueError:
+                limite = 300
+            limite = max(0, min(limite, MAX_EVENTOS))
+            eventos = construir_eventos(limite, q.get("alias"), q.get("tipo"))
+            with LOCK:
+                total = len(ESTADO["eventos"])
+            self._json(200, {"generadoEn": ahora_iso(), "total": total,
+                             "devueltos": len(eventos), "eventos": eventos})
             return
         if ruta == "/api/health":
             with LOCK:
@@ -490,6 +989,8 @@ class Handler(BaseHTTPRequestHandler):
                 salud = ESTADO["salud"]
                 barriendo = ESTADO["sesiones"]["barriendo"]
                 error = ESTADO["sesiones"]["error"]
+                n_ev = len(ESTADO["eventos"])
+                n_h = sum(len(v) for v in ESTADO["agregados"]["horas"].values())
             edad = int(time.time() - ses_t) if ses_t else None
             ok = bool(salud) and (edad is None or edad < BARRIDO_S + 600)
             self._json(200, {
@@ -500,6 +1001,10 @@ class Handler(BaseHTTPRequestHandler):
                 "barriendo_sesiones": barriendo,
                 "error_sesiones": error,
                 "puntos_historico": len(ESTADO["puntos"]),
+                "cubos_horarios": n_h,
+                "eventos": n_ev,
+                "retencion_horaria_dias": RET_HORAS,
+                "retencion_diaria_dias": RET_DIAS,
             })
             return
         if ruta == "/api/refresh":
@@ -520,6 +1025,7 @@ def main():
         log("FATAL: faltan PANEL_USER / PANEL_PASS; no se sirve el panel sin autenticación")
         return 2
     cargar_disco()
+    cargar_agregados()
     threading.Thread(target=bucle_medicion, daemon=True).start()
     threading.Thread(target=bucle_sesiones, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PUERTO), Handler)
