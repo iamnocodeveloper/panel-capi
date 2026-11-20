@@ -213,14 +213,12 @@ tfoot td{font-weight:600;border-top:1px solid var(--borde2);border-bottom:0;back
     <div class="cuerpo">
       <div class="rama">
         <div>
-          <h3>Carga promedio por hora del día (Ecuador)</h3>
+          <h3>Carga promedio por hora del día (hora de Ecuador, UTC-5)</h3>
           <div class="barras" id="barrasHora"></div>
-          <div class="eje"><span>00 h</span><span>06 h</span><span>12 h</span><span>18 h</span><span>23 h</span></div>
         </div>
         <div>
           <h3>Carga promedio por día de la semana</h3>
           <div class="barras" id="barrasDia"></div>
-          <div class="eje" id="ejeDia"></div>
         </div>
       </div>
       <div style="border-top:1px solid #24282d;margin:14px -14px 0;padding:12px 14px 0">
@@ -570,7 +568,6 @@ function pintarPatrones(){
   const etHora = Array.from({length:24},(_,i)=>String(i).padStart(2,"0"));
   barras(datosHora, etHora, "barrasHora", colorCarga);
   barras(datosDia, DATOS.dias_semana, "barrasDia", colorCarga);
-  $("ejeDia").innerHTML = '<span>lunes</span><span>domingo</span>';
   const cob = DATOS.cobertura || {};
   const horas = cob.horas_cubiertas || 0;
   const conDatos = datosHora.filter(v=>v!=null).length;
@@ -636,14 +633,17 @@ function pintarTendencia(){
     datos.forEach(d=>{
       if(ocultos.has(d.alias)) return;
       const col = colorDe(d.alias);
-      let dp="", dm="", abP=false, abM=false;
+      let dp="", dm="", abP=false, abM=false, nP=0, ultP=null;
       d.serie.forEach((p,i)=>{
         const vp = p[met+"_prom"], vm = p[met+"_max"];
-        if(vp==null){ abP=false; } else { dp += (abP?"L":"M")+X(i).toFixed(1)+" "+Y(vp).toFixed(1)+" "; abP=true; }
+        if(vp==null){ abP=false; } else {
+          dp += (abP?"L":"M")+X(i).toFixed(1)+" "+Y(vp).toFixed(1)+" "; abP=true; nP++; ultP=[X(i),Y(vp)];
+        }
         if(vm==null){ abM=false; } else { dm += (abM?"L":"M")+X(i).toFixed(1)+" "+Y(vm).toFixed(1)+" "; abM=true; }
       });
-      if(dp) out += '<path d="'+dp+'" fill="none" stroke="'+col+'" stroke-width="1.9" stroke-linejoin="round"/>';
+      if(nP>1) out += '<path d="'+dp+'" fill="none" stroke="'+col+'" stroke-width="1.9" stroke-linejoin="round"/>';
       if(dm) out += '<path d="'+dm+'" fill="none" stroke="'+col+'" stroke-width="1.2" stroke-dasharray="4 3" opacity=".75"/>';
+      if(ultP) out += '<circle cx="'+ultP[0].toFixed(1)+'" cy="'+ultP[1].toFixed(1)+'" r="3" fill="'+col+'"/>';
     });
   }
   out += '</g>';

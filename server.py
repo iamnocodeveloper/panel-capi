@@ -46,7 +46,7 @@ TIMEOUT_OPS = 12
 RET_HORAS = 10            # días de detalle horario
 RET_DIAS = 30             # días de agregados diarios
 MAX_PICOS_SRV = 5         # picos guardados por servidor
-MAX_PICOS_GLOBAL = 8      # picos guardados de la flota
+MAX_PICOS_GLOBAL = 8      # picos guardados por métrica en la vista global
 MAX_EVENTOS = 3000        # eventos persistidos
 UMBRALES = (85.0, 92.0)   # umbrales de CPU/Memoria/Disco
 
@@ -99,7 +99,7 @@ ESTADO = {
     },
     # --- histórico largo (persistido)
     "agregados": {"horas": {}, "dias": {}},
-    "picos": {"por_servidor": {}, "global": []},
+    "picos": {"por_servidor": {}, "global": {}},
     "eventos": [],
     "estado_previo": {},    # alias -> {reachable, cpu_nivel, mem_nivel, disco_nivel, failed}
     "incidencias_prev": None,
@@ -212,7 +212,15 @@ def cargar_agregados():
                 ESTADO["agregados"]["horas"] = d.get("horas") or {}
                 ESTADO["agregados"]["dias"] = d.get("dias") or {}
                 ESTADO["picos"]["por_servidor"] = d.get("picos_servidor") or {}
-                ESTADO["picos"]["global"] = d.get("picos_global") or []
+                pg = d.get("picos_global") or {}
+                if isinstance(pg, list):        # formato anterior (una sola lista)
+                    conv = {}
+                    for p in pg:
+                        conv.setdefault(p.get("metrica"), []).append(p)
+                    pg = {m: sorted(v, key=lambda x: -x["valor"])[:MAX_PICOS_GLOBAL]
+                          for m, v in conv.items()}
+                    ESTADO["agregados_sucios"] = True
+                ESTADO["picos"]["global"] = pg
                 ESTADO["estado_previo"] = d.get("estado_previo") or {}
                 ESTADO["incidencias_prev"] = d.get("incidencias_prev")
             nuevo = False
@@ -297,7 +305,7 @@ def registrar_pico(alias, met, v, t):
         del lst[tope:]
 
     insertar(ESTADO["picos"]["por_servidor"].setdefault(alias, []), MAX_PICOS_SRV)
-    insertar(ESTADO["picos"]["global"], MAX_PICOS_GLOBAL)
+    insertar(ESTADO["picos"]["global"].setdefault(met, []), MAX_PICOS_GLOBAL)
 
 
 def podar_agregados():
@@ -699,9 +707,16 @@ def construir_picos():
     with LOCK:
         por_srv = {a: [dict(x, hora_ec=iso_ec(x["t"]), iso=ahora_iso(x["t"]))
                        for x in lst] for a, lst in ESTADO["picos"]["por_servidor"].items()}
-        glob = [dict(x, hora_ec=iso_ec(x["t"]), iso=ahora_iso(x["t"])) for x in ESTADO["picos"]["global"]]
-    glob.sort(key=lambda x: -x["valor"])
-    return {"por_servidor": por_srv, "global": glob}
+        glob = {}
+        for met, lst in (ESTADO["picos"]["global"] or {}).items():
+            glob[met] = [dict(x, hora_ec=iso_ec(x["t"]), iso=ahora_iso(x["t"])) for x in lst]
+    # vista global: los 3 picos más altos de cada métrica (CPU, memoria y disco)
+    vista = []
+    for met, lst in glob.items():
+        vista.extend(sorted(lst, key=lambda x: -x["valor"])[:3])
+    vista.sort(key=lambda x: -x["valor"])
+    return {"por_servidor": por_srv, "global": vista,
+            "global_por_metrica": {m: sorted(l, key=lambda x: -x["valor"])[:3] for m, l in glob.items()}}
 
 
 def construir_eventos(limite=200, alias=None, tipo=None):
